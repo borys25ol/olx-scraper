@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 import json
 import re
+from math import ceil
 
 import scrapy
 from scrapy import Request
+from w3lib.url import add_or_replace_parameter
 
 
 class OlxPkSpider(scrapy.Spider):
@@ -25,6 +27,7 @@ class OlxPkSpider(scrapy.Spider):
         super(OlxPkSpider, self).__init__()
         self.olx_api_pattern = 'https://www.olx.com.pk/api/locations?parent={location}'
         self.olx_page_pattern = 'https://www.olx.com.pk/{}{}'
+        self.olx_category_api_url = 'https://www.olx.com.pk/api/relevance/search'
 
     @staticmethod
     def get_data_from_json(response):
@@ -37,6 +40,29 @@ class OlxPkSpider(scrapy.Spider):
         name = name.lower().replace(' ', '-')
         id_part = '_g' + str(location_id)
         url = url_pattern.format(name, id_part) + head
+        return url
+
+    @staticmethod
+    def create_category_api_url(url_pattern, **kwargs):
+        url = url_pattern
+
+        payload = {
+            'category': kwargs['category_id'],
+            'facet_limit': '100',
+            'location': kwargs['location'],
+            'location_facet_limit': '6',
+            'page': kwargs['page'],
+            'user': '16a55be26b4x3d2ccfc'
+        }
+
+        if kwargs.get('sorting'):
+            payload = payload.update({
+                'sorting': kwargs['sorting']
+            })
+
+        for k, v in payload.items():
+            url = add_or_replace_parameter(url, k, v)
+
         return url
 
     def start_requests(self):
@@ -74,6 +100,28 @@ class OlxPkSpider(scrapy.Spider):
                     callback=self.parse_olx_api,
                     meta=response.meta
                 )
+            else:
+                if count and count > 1000:
+                    total_pages = ceil(ceil(count / 20) / 2)
+                    for page in range(int(total_pages)):
+                        for sorting in ['asc-price', 'desc-price']:
+                            if category_id == location_id:
+                                url = self.create_category_api_url(
+                                    url_pattern=self.olx_category_api_url,
+                                    category_id=category_id,
+                                    page=page,
+                                    location='1000001',
+                                    sorting=sorting
+                                )
+                            else:
+                                url = self.create_category_api_url(
+                                    url_pattern=self.olx_category_api_url,
+                                    category_id=category_id,
+                                    page=page,
+                                    location=location_id,
+                                    sorting=sorting
+                                )
+                            yield response.request.replace(url=url, callback=self.parse_api_id, meta=response.meta)
 
     def parse_olx_api(self, response):
         head_path = response.meta.get('path')
@@ -86,3 +134,10 @@ class OlxPkSpider(scrapy.Spider):
                     url=url,
                     callback=self.parse_category
                 )
+
+    def parse_api_id(self, response):
+        data = self.get_data_from_json(response)
+        if data:
+            id_list = [item['id'] for item in data]
+            for id in id_list:
+                print(id)
