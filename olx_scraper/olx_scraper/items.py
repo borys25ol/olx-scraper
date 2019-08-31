@@ -4,7 +4,7 @@ from scrapy.loader import ItemLoader
 from scrapy.loader.processors import MapCompose, TakeFirst, Join
 from w3lib.html import replace_entities
 
-from olx_pk_scraper.olx_scraper.olx_scraper.utils.extractors import clean_spaces, clean_text
+from olx_scraper.utils.extractors import clean_text, clean_spaces
 
 
 class OlxItemLoader(ItemLoader):
