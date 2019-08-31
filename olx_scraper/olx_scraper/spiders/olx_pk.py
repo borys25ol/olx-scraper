@@ -3,6 +3,7 @@ import datetime
 import json
 import re
 from math import ceil
+from urllib.parse import urljoin
 
 import scrapy
 from scrapy import Request
