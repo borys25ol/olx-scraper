@@ -7,6 +7,15 @@ from w3lib.html import replace_entities
 from olx_scraper.utils.extractors import clean_text, clean_spaces
 
 
+def modify_image_size(values):
+    spileted_url = values.split(';')
+    if spileted_url:
+        output_link = ';'.join([spileted_url[0], 's=1080x1080'])
+        return output_link
+    else:
+        return values
+
+
 class OlxItemLoader(ItemLoader):
     default_input_processor = MapCompose(
         clean_text,
@@ -19,7 +28,7 @@ class OlxItemLoader(ItemLoader):
     purpose_in = MapCompose(default_input_processor, lambda v: v.title())
     breadcrumb_out = Join(separator='/')
 
-    image_urls_in = MapCompose(default_input_processor)
+    image_urls_in = MapCompose(default_input_processor, modify_image_size)
     image_urls_out = Join(separator=', ')
     verified_member_out = Join(separator='|')
 

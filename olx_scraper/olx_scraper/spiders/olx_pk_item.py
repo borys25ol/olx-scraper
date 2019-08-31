@@ -4,7 +4,6 @@ import re
 from urllib.parse import urljoin
 
 import scrapy
-from scrapy.loader.processors import TakeFirst
 
 from olx_scraper.items import OlxItemLoader, OlxItem, ErrorItem, UserItem
 
@@ -24,6 +23,7 @@ class OlxSpider(scrapy.Spider):
     city_re = re.compile('.+,(.+),.+')
     province_re = re.compile('.+,.+,(.+)')
     phone_number_re = re.compile('"key_name":"phone","value":"(\+\d+)"')
+    purpose_re = re.compile('Property (.+)')
     date_on_website_re = re.compile('"created_at_first":"(.+?)"')
     number_account_re = re.compile('profile/(\d+)')
 
@@ -76,7 +76,7 @@ class OlxSpider(scrapy.Spider):
 
         l.add_value('phone_number', self.phone_number_re.findall(response.text))
         l.add_xpath('agent_name', self.agent_name_xpath)
-        l.add_xpath('purpose', self.purpose_xpath, re='Property (.+)')
+        l.add_xpath('purpose', self.purpose_xpath, re=self.purpose_re)
         l.add_xpath('property_type', self.property_type_xpath)
 
         l.add_xpath('area', self.area_xpath)
