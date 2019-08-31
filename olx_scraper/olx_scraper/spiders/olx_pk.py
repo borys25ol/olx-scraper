@@ -17,6 +17,10 @@ class OlxPkSpider(scrapy.Spider):
         'https://www.olx.com.pk/property-for-rent_c3',
     ]
 
+    extra_links = [
+        # 'https://www.olx.com.pk/sindh_g2003007/apartments-flats_c1723'
+    ]
+
     custom_settings = {
         'DUPEFILTER_CLASS': 'scrapy.dupefilters.BaseDupeFilter',
     }
@@ -56,7 +60,7 @@ class OlxPkSpider(scrapy.Spider):
         }
 
         if kwargs.get('sorting'):
-            payload = payload.update({
+            payload.update({
                 'sorting': kwargs['sorting']
             })
 
@@ -66,8 +70,12 @@ class OlxPkSpider(scrapy.Spider):
         return url
 
     def start_requests(self):
-        for url in self.start_urls:
-            yield Request(url=url, callback=self.parse)
+        if self.extra_links:
+            for url in self.extra_links:
+                yield Request(url=url, callback=self.parse_category)
+        else:
+            for url in self.start_urls:
+                yield Request(url=url, callback=self.parse)
 
     def parse(self, response):
         categories_urls = response.xpath('//ul[@data-aut-id="subcategories"]/li/ul/li/a')
@@ -90,10 +98,9 @@ class OlxPkSpider(scrapy.Spider):
                     response.meta['path'] = '/' + response.url.split('/')[-2]
                 else:
                     response.meta['path'] = '/' + response.url.split('/')[-1]
-                if category_id == location_id:
-                    url = self.olx_api_pattern.format(location='1000001')
-                else:
-                    url = self.olx_api_pattern.format(location=location_id)
+
+                location = '1000001' if category_id == location_id else location_id
+                url = self.olx_api_pattern.format(location=location)
 
                 yield response.request.replace(
                     url=url,
@@ -105,23 +112,33 @@ class OlxPkSpider(scrapy.Spider):
                     total_pages = ceil(ceil(count / 20) / 2)
                     for page in range(int(total_pages)):
                         for sorting in ['asc-price', 'desc-price']:
-                            if category_id == location_id:
-                                url = self.create_category_api_url(
-                                    url_pattern=self.olx_category_api_url,
-                                    category_id=category_id,
-                                    page=page,
-                                    location='1000001',
-                                    sorting=sorting
-                                )
-                            else:
-                                url = self.create_category_api_url(
-                                    url_pattern=self.olx_category_api_url,
-                                    category_id=category_id,
-                                    page=page,
-                                    location=location_id,
-                                    sorting=sorting
-                                )
-                            yield response.request.replace(url=url, callback=self.parse_api_id, meta=response.meta)
+                            url = self.create_category_api_url(
+                                url_pattern=self.olx_category_api_url,
+                                category_id=category_id,
+                                page=page,
+                                location='1000001' if category_id == location_id else location_id,
+                                sorting=sorting
+                            )
+                            yield response.request.replace(
+                                url=url,
+                                callback=self.parse_api_id,
+                                meta=response.meta
+                            )
+
+            if count and count <= 1000:
+                total_pages = ceil(count / 20)
+                for page in range(int(total_pages)):
+                    url = self.create_category_api_url(
+                        url_pattern=self.olx_category_api_url,
+                        category_id=category_id,
+                        page=page,
+                        location='1000001' if category_id == location_id else location_id,
+                    )
+                    yield response.request.replace(
+                        url=url,
+                        callback=self.parse_api_id,
+                        meta=response.meta
+                    )
 
     def parse_olx_api(self, response):
         head_path = response.meta.get('path')
