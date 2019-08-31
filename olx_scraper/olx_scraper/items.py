@@ -56,6 +56,16 @@ class OlxItem(scrapy.Item):
     agent_url = scrapy.Field()
 
 
+class UserItem(scrapy.Item):
+    name = scrapy.Field()
+    number_account = scrapy.Field()
+    verified_member = scrapy.Field(type=list)
+    since_date = scrapy.Field()
+    user_date_scraped = scrapy.Field()
+    user_url = scrapy.Field()
+    phone_number = scrapy.Field()
+
+
 class ErrorItem(scrapy.Item):
     url = scrapy.Field()
     reason_code = scrapy.Field()
