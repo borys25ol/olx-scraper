@@ -29,8 +29,10 @@ class OlxPkSpider(scrapy.Spider):
 
     def __init__(self):
         super(OlxPkSpider, self).__init__()
+        self.filter = set()
         self.olx_api_pattern = 'https://www.olx.com.pk/api/locations?parent={location}'
         self.olx_page_pattern = 'https://www.olx.com.pk/{}{}'
+        self.olx_product_pattern = 'https://www.olx.com.pk/item/{id}'
         self.olx_category_api_url = 'https://www.olx.com.pk/api/relevance/search'
 
     @staticmethod
@@ -125,20 +127,20 @@ class OlxPkSpider(scrapy.Spider):
                                 meta=response.meta
                             )
 
-            if count and count <= 1000:
-                total_pages = ceil(count / 20)
-                for page in range(int(total_pages)):
-                    url = self.create_category_api_url(
-                        url_pattern=self.olx_category_api_url,
-                        category_id=category_id,
-                        page=page,
-                        location='1000001' if category_id == location_id else location_id,
-                    )
-                    yield response.request.replace(
-                        url=url,
-                        callback=self.parse_api_id,
-                        meta=response.meta
-                    )
+                if count and count <= 1000:
+                    total_pages = ceil(count / 20)
+                    for page in range(int(total_pages)):
+                        url = self.create_category_api_url(
+                            url_pattern=self.olx_category_api_url,
+                            category_id=category_id,
+                            page=page,
+                            location='1000001' if category_id == location_id else location_id,
+                        )
+                        yield response.request.replace(
+                            url=url,
+                            callback=self.parse_api_id,
+                            meta=response.meta
+                        )
 
     def parse_olx_api(self, response):
         head_path = response.meta.get('path')
@@ -157,4 +159,15 @@ class OlxPkSpider(scrapy.Spider):
         if data:
             id_list = [item['id'] for item in data]
             for id in id_list:
-                print(id)
+                product_page = self.olx_product_pattern.format(id=id)
+                if product_page not in self.filter:
+                    self.filter.add(product_page)
+                    response.meta['_origin_url'] = product_page
+                    yield response.request.replace(
+                        url=product_page,
+                        callback=self.parse_page_info,
+                        meta=response.meta
+                    )
+
+    def parse_page_info(self, response):
+        pass
