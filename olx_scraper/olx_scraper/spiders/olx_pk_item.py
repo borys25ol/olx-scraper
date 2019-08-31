@@ -6,7 +6,7 @@ from urllib.parse import urljoin
 import scrapy
 from scrapy.loader.processors import TakeFirst
 
-from olx_scraper.items import OlxItemLoader, OlxItem
+from olx_scraper.items import OlxItemLoader, OlxItem, ErrorItem, UserItem
 
 
 class OlxSpider(scrapy.Spider):
@@ -16,14 +16,17 @@ class OlxSpider(scrapy.Spider):
 
     start_urls = ['https://www.olx.com.pk/item/3-bad-dd-rent-brand-new-flats-available-iid-1008636120']
 
+    handle_httpstatus_list = [404, 403, 503, 500, 400]
+
     image_urls_re = re.compile('background-image:url\((.+)\)')
     count_of_images_re = re.compile('\d+\s+/\s+(\d+)')
     location_re = re.compile('(.+),.+,.+')
     city_re = re.compile('.+,(.+),.+')
     province_re = re.compile('.+,.+,(.+)')
     phone_number_re = re.compile('"key_name":"phone","value":"(\+\d+)"')
-    date_on_website_re = re.compile('"created_at_first":"(.+?)"'
-                                    )
+    date_on_website_re = re.compile('"created_at_first":"(.+?)"')
+    number_account_re = re.compile('profile/(\d+)')
+
     breadcrumb_xpath = '//ol/li/a'
     image_urls_xpath_1 = '//*[@id="container"]/main/div/div/div[4]/div/div/div[4]/div/div/div//button/@style'
     image_urls_xpath_2 = '//div[@class="slick-track"]//img/@src'
@@ -42,6 +45,10 @@ class OlxSpider(scrapy.Spider):
     ad_id_xpath = '//strong[contains(text(), "AD ID")]'
     date_on_website_xpath = '//div[@data-aut-id="itemCreationDate"]/span'
     agent_url_xpath = '//div[@data-aut-id="profileCard"]//a/@href'
+
+    user_name_xpath = '//div[@data-aut-id="profileHeader"]/div'
+    verified_number_xpath = '//div[@data-aut-id="verifiedAccount"]//div[@class="_1IG2d"]'
+    since_date_xpath = '//div[@data-aut-id="memberSince"]//span/span'
 
     def parse(self, response):
         l = OlxItemLoader(item=OlxItem(), response=response)
@@ -83,6 +90,41 @@ class OlxSpider(scrapy.Spider):
         l.add_value('product_url', response.url)
         l.add_xpath('agent_url', self.agent_url_xpath, lambda v: urljoin(response.url, v[0]))
 
+        yield l.load_item()
+
+        if response.status in self.handle_httpstatus_list:
+            error_item = ErrorItem()
+            error_item['url'] = response.meta.get('_origin_url')
+            error_item['reason_code'] = response.status
+            error_item['table'] = 'listings'
+            yield error_item
+
         response.meta['_phone_number'] = l.get_output_value('phone_number')
+
+        agent_url = l.get_output_value('agent_url')
+        if agent_url:
+            yield response.request.replace(
+                url=agent_url,
+                meta=response.meta,
+                callback=self.parse_agent_info
+            )
+
+    def parse_agent_info(self, response):
+        l = OlxItemLoader(item=UserItem(), response=response)
+
+        l.add_xpath('name', self.user_name_xpath)
+        l.add_value('number_account', self.number_account_re.findall(response.url))
+        l.add_xpath('verified_member', self.verified_number_xpath)
+        l.add_xpath('since_date', self.since_date_xpath)
+        l.add_value('user_date_scraped', datetime.datetime.now().strftime("%Y-%m-%d"))
+        l.add_value('user_url', response.url)
+        l.add_value('phone_number', response.meta.get('_phone_number'))
+
+        if response.status in self.handle_httpstatus_list:
+            error_item = ErrorItem()
+            error_item['url'] = response.meta.get('_origin_url')
+            error_item['reason_code'] = response.status
+            error_item['table'] = 'users'
+            yield error_item
 
         yield l.load_item()
