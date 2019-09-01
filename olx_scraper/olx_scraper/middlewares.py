@@ -1,103 +1,75 @@
 # -*- coding: utf-8 -*-
+import random
+from itertools import cycle
+from scrapy.exceptions import NotConfigured
 
-# Define here the models for your spider middleware
-#
-# See documentation in:
-# https://doc.scrapy.org/en/latest/topics/spider-middleware.html
-
-from scrapy import signals
+from olx_scraper.proxy.proxies import set_proxy
 
 
-class OlxScraperSpiderMiddleware(object):
-    # Not all methods need to be defined. If a method is not defined,
-    # scrapy acts as if the spider middleware does not modify the
-    # passed objects.
+class RandomUserAgentMiddleware(object):
+    """For every request set random useragent from USERAGRNTS_LIST
 
-    @classmethod
-    def from_crawler(cls, crawler):
-        # This method is used by Scrapy to create your spiders.
-        s = cls()
-        crawler.signals.connect(s.spider_opened, signal=signals.spider_opened)
-        return s
-
-    def process_spider_input(self, response, spider):
-        # Called for each response that goes through the spider
-        # middleware and into the spider.
-
-        # Should return None or raise an exception.
-        return None
-
-    def process_spider_output(self, response, result, spider):
-        # Called with the results returned from the Spider, after
-        # it has processed the response.
-
-        # Must return an iterable of Request, dict or Item objects.
-        for i in result:
-            yield i
-
-    def process_spider_exception(self, response, exception, spider):
-        # Called when a spider or process_spider_input() method
-        # (from other spider middleware) raises an exception.
-
-        # Should return either None or an iterable of Response, dict
-        # or Item objects.
-        pass
-
-    def process_start_requests(self, start_requests, spider):
-        # Called with the start requests of the spider, and works
-        # similarly to the process_spider_output() method, except
-        # that it doesn’t have a response associated.
-
-        # Must return only requests (not items).
-        for r in start_requests:
-            yield r
-
-    def spider_opened(self, spider):
-        spider.logger.info('Spider opened: %s' % spider.name)
-
-
-class OlxScraperDownloaderMiddleware(object):
-    # Not all methods need to be defined. If a method is not defined,
-    # scrapy acts as if the downloader middleware does not modify the
-    # passed objects.
+    If USERAGENT_DEBUG = True, log current useragent to terminal
+    """
+    def __init__(self, useragents_list, random_enable, debug):
+        self.useragents_list = useragents_list
+        self.random_enable = random_enable
+        self.debug = debug
 
     @classmethod
     def from_crawler(cls, crawler):
-        # This method is used by Scrapy to create your spiders.
-        s = cls()
-        crawler.signals.connect(s.spider_opened, signal=signals.spider_opened)
-        return s
+        useragents_list = crawler.settings.getlist('USERAGENTS_LIST', [])
+        if not useragents_list:
+            raise NotConfigured
+
+        random.shuffle(useragents_list)
+        useragents_list = cycle(useragents_list)
+
+        random_enable = crawler.settings.get('RANDOM_USERAGENT', False)
+        debug = crawler.settings.get('USERAGENT_DEBUG', False)
+        return cls(useragents_list, random_enable, debug)
 
     def process_request(self, request, spider):
-        # Called for each request that goes through the downloader
-        # middleware.
+        ua = next(self.useragents_list)
+        if ua:
+            if self.random_enable:
+                request.headers['User-Agent'] = ua
+            if self.debug:
+                spider.logger.debug(f'User-Agent "{ua}" used')
 
-        # Must either:
-        # - return None: continue processing this request
-        # - or return a Response object
-        # - or return a Request object
-        # - or raise IgnoreRequest: process_exception() methods of
-        #   installed downloader middleware will be called
-        return None
 
-    def process_response(self, request, response, spider):
-        # Called with the response returned from the downloader.
+class RandomProxyMiddleware(object):
+    """For every request set random proxy from free AWM proxy list
 
-        # Must either;
-        # - return a Response object
-        # - return a Request object
-        # - or raise IgnoreRequest
-        return response
+    Work only if PROXY_ENABLE = True
+    """
+    def __init__(self, proxies):
+        self._proxies = cycle(proxies)
 
-    def process_exception(self, request, exception, spider):
-        # Called when a download handler or a process_request()
-        # (from other downloader middleware) raises an exception.
+    @classmethod
+    def from_crawler(cls, crawler):
+        return cls.from_settings(crawler.settings)
 
-        # Must either:
-        # - return None: continue processing this exception
-        # - return a Response object: stops process_exception() chain
-        # - return a Request object: stops process_exception() chain
-        pass
+    @classmethod
+    def from_settings(cls, settings):
+        if not settings.get('PROXY_ENABLE'):
+            raise NotConfigured('Proxy is disabled in settings')
 
-    def spider_opened(self, spider):
-        spider.logger.info('Spider opened: %s' % spider.name)
+        proxies = set(settings.get('PROXIES_LIST', []))
+
+        proxies = list(proxies)
+        if not proxies:
+            raise NotConfigured('Proxies list are empty')
+
+        random.shuffle(proxies)
+
+        return cls(proxies)
+
+    @property
+    def proxy(self):
+        return next(self._proxies)
+
+    def process_request(self, request, spider):
+        proxy = self.proxy
+        spider.logger.debug(f'Proxy used: {proxy}')
+        set_proxy(request, proxy)

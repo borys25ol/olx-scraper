@@ -13533,8 +13533,6 @@ def set_proxy(request, url):
     if credentials:
         request.headers['Proxy-Authorization'] = 'Basic ' + credentials
 
-    request.meta.setdefault('used_proxies', [])
-
 
 def parse_proxy(url, _type='http'):
     proxy_type, user, password, hostport = _parse_proxy(url)
