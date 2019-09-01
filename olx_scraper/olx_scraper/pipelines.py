@@ -2,6 +2,8 @@
 import datetime
 import re
 
+from scrapy import signals
+from scrapy.exporters import CsvItemExporter
 from sqlalchemy.orm import sessionmaker
 
 from olx_scraper.database.db import ListingDB, UserDB, db_connect_to_listings, db_connect_to_users, create_table
@@ -102,6 +104,64 @@ class NormalizeDatePipeline(object):
 
                     item['date_on_website'] = date
 
+        return item
+
+
+class CsvPipeline(object):
+    """Custom CSV pipeline.
+
+    Push all items to 'products.csv' if item from OlxItem
+    Push all items to 'users.csv' if item from UserItem
+    """
+    def __init__(self):
+        self.product_fields_to_export = [
+            'breadcrumb', 'description', 'price', 'title', 'location', 'city', 'province',
+            'phone_number', 'agent_name', 'purpose', 'property_type', 'area', 'area_unit',
+            'bedroom', 'ad_id', 'date_on_website', 'date_scrapped', 'product_url', 'image_urls',
+            'count_of_images', 'agent_url', 'featured', 'phone_number'
+        ]
+        self.user_fields_to_export = [
+            'name', 'number_account', 'verified_member', 'since_date', 'user_date_scrapped',
+            'user_url'
+        ]
+        self.product_file_name = 'products.csv'
+        self.user_file_name = 'users.csv'
+        self.delimiter = ','
+
+    @classmethod
+    def from_crawler(cls, crawler):
+        pipeline = cls()
+        crawler.signals.connect(pipeline.spider_opened, signals.spider_opened)
+        crawler.signals.connect(pipeline.spider_closed, signals.spider_closed)
+        return pipeline
+
+    def spider_opened(self, spider):
+        self.product_file = open(self.product_file_name, 'w+b')
+        self.user_file = open(self.user_file_name, 'w+b')
+        self.product_exporter = CsvItemExporter(
+            self.product_file,
+            fields_to_export=self.product_fields_to_export,
+            delimiter=self.delimiter
+        )
+        self.user_exporter = CsvItemExporter(
+            self.user_file,
+            fields_to_export=self.user_fields_to_export,
+            delimiter=self.delimiter
+        )
+        self.product_exporter.start_exporting()
+        self.user_exporter.start_exporting()
+
+    def spider_closed(self, spider):
+        self.product_exporter.finish_exporting()
+        self.user_exporter.finish_exporting()
+        self.product_file.close()
+        self.user_file.close()
+
+    def process_item(self, item, spider):
+        if isinstance(item, OlxItem):
+            self.product_exporter.export_item(item)
+        elif isinstance(item, UserItem):
+            self.user_exporter.export_item(item)
         return item
 
 
